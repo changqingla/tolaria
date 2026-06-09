@@ -202,6 +202,45 @@ describe('mockHandlers coverage', () => {
     })
   })
 
+  it('imports supported vault files and rejects unsupported uploads', async () => {
+    const { mockHandlers } = await loadHandlers()
+
+    const imported = mockHandlers.import_file_to_vault({
+      vaultPath: '/vault',
+      sourcePath: '/tmp/Research.MARKDOWN',
+      destinationFolder: 'Projects',
+    })
+
+    expect(imported).toBe('/vault/Projects/Research.MARKDOWN')
+    expect(mockHandlers.get_all_content()).toMatchObject({
+      ['/vault/Projects/Research.MARKDOWN']: '# Research\n',
+    })
+    expect(() => mockHandlers.import_file_to_vault({
+      vaultPath: '/vault',
+      sourcePath: '/tmp/notes.docx',
+    })).toThrow('Only Markdown and PDF files can be uploaded')
+    expect(() => mockHandlers.import_file_to_vault({
+      vaultPath: '/vault',
+      sourcePath: '/tmp/Research.md',
+      destinationFolder: '../outside',
+    })).toThrow('Path must stay inside the active vault')
+  })
+
+  it('imports PDF files with numeric mock metadata', async () => {
+    const { mockHandlers } = await loadHandlers()
+
+    const imported = mockHandlers.import_file_to_vault({
+      vaultPath: '/vault',
+      sourcePath: '/tmp/Guide.pdf',
+    })
+
+    expect(imported).toBe('/vault/Guide.pdf')
+    expect(mockHandlers.reload_vault({}).find((entry: { path: string }) => entry.path === imported)).toMatchObject({
+      fileKind: 'binary',
+      wordCount: 0,
+    })
+  })
+
   it('builds attachment paths for saved and copied images', async () => {
     const { mockHandlers } = await loadHandlers()
     vi.spyOn(Date, 'now').mockReturnValue(12345)

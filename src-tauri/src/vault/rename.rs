@@ -100,7 +100,7 @@ fn build_wikilink_pattern(targets: &[&str]) -> Option<Regex> {
 
 /// Check if a path is a vault markdown file eligible for wikilink replacement.
 fn is_replaceable_md_file(path: &Path, exclude: &Path) -> bool {
-    path.is_file() && path != exclude && path.extension().is_some_and(|ext| ext == "md")
+    path != exclude && super::is_md_file(path)
 }
 
 /// Replace wikilink references in a single file's content. Returns updated content if changed.
@@ -897,7 +897,7 @@ mod tests {
         );
         create_test_file(
             vault,
-            "note/other.md",
+            "note/other.MD",
             "---\nIs A: Note\n---\n# Other\n\nSee [[Weekly Review]] for details.\n",
         );
         create_test_file(
@@ -917,7 +917,7 @@ mod tests {
 
         assert_eq!(result.updated_files, 2);
 
-        let other_content = fs::read_to_string(vault.join("note/other.md")).unwrap();
+        let other_content = fs::read_to_string(vault.join("note/other.MD")).unwrap();
         assert!(other_content.contains("[[note/sprint-retrospective]]"));
         assert!(!other_content.contains("[[Weekly Review]]"));
 

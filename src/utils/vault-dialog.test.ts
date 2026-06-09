@@ -18,7 +18,7 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
   open: (...args: unknown[]) => openMock(...args),
 }))
 
-import { pickFolder } from './vault-dialog'
+import { pickFolder, pickImportableVaultFile } from './vault-dialog'
 import { isTauri } from '../mock-tauri'
 import {
   isRestartRequiredAfterUpdate,
@@ -127,5 +127,48 @@ describe('pickFolder', () => {
     const result = await pickFolder('Select vault')
 
     expect(result).toBe('/Users/test/My Vault')
+  })
+})
+
+describe('pickImportableVaultFile', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    vi.clearAllMocks()
+    openMock.mockReset()
+    vi.mocked(isRestartRequiredAfterUpdate).mockReturnValue(false)
+  })
+
+  it('uses localized native file filters', async () => {
+    vi.mocked(isTauri).mockReturnValue(true)
+    openMock.mockResolvedValue('/Users/test/Guide.pdf')
+
+    const result = await pickImportableVaultFile({
+      title: '上传文件',
+      filters: {
+        markdownAndPdf: 'Markdown 和 PDF 文件',
+        markdown: 'Markdown',
+        pdf: 'PDF',
+      },
+    })
+
+    expect(result).toBe('/Users/test/Guide.pdf')
+    expect(openMock).toHaveBeenCalledWith({
+      directory: false,
+      multiple: false,
+      title: '上传文件',
+      filters: [
+        { name: 'Markdown 和 PDF 文件', extensions: ['md', 'markdown', 'pdf'] },
+        { name: 'Markdown', extensions: ['md', 'markdown'] },
+        { name: 'PDF', extensions: ['pdf'] },
+      ],
+    })
+  })
+
+  it('translates an NSOpenPanel panic into the restart-required picker error', async () => {
+    vi.mocked(isTauri).mockReturnValue(true)
+    openMock.mockRejectedValue('panic: unexpected NULL returned from +[NSOpenPanel openPanel]')
+
+    await expect(pickImportableVaultFile()).rejects.toThrow(RESTART_REQUIRED_FOLDER_PICKER_MESSAGE)
+    expect(markRestartRequiredAfterUpdate).toHaveBeenCalledOnce()
   })
 })

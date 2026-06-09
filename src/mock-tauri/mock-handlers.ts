@@ -221,6 +221,86 @@ function buildRenamedMockPath({ oldPath, newTitle }: { oldPath: string; newTitle
   return `${parentDir}/${slugifyMockTitle({ title: newTitle })}.md`
 }
 
+const IMPORTABLE_MOCK_FILE_EXTENSIONS = new Set(['md', 'markdown', 'pdf'])
+
+function mockFileExtension(filename: string) {
+  return filename.split('.').pop()?.toLowerCase() ?? ''
+}
+
+function validateImportableMockFilename(filename: string) {
+  if (!IMPORTABLE_MOCK_FILE_EXTENSIONS.has(mockFileExtension(filename))) {
+    throw new Error(`Only Markdown and PDF files can be uploaded: `)
+  }
+}
+
+function validateMockImportDestination(folder: string) {
+  if (!folder) return
+  if (folder.startsWith('/') || /^[A-Za-z]:[\\/]/.test(folder)) {
+    throw new Error('Path must stay inside the active vault')
+  }
+  const segments = folder.split(/[\\/]+/).filter(Boolean)
+  if (segments.some((segment) => segment === '.' || segment === '..')) {
+    throw new Error('Path must stay inside the active vault')
+  }
+}
+
+function titleFromMockFilename(filename: string) {
+  return filename
+    .replace(/\.[^.]+$/, '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function handleImportFileToVault(args: {
+  vaultPath?: string
+  vault_path?: string
+  sourcePath?: string
+  source_path?: string
+  destinationFolder?: string | null
+  destination_folder?: string | null
+}) {
+  const vaultPath = args.vaultPath ?? args.vault_path ?? mockLastVaultPath ?? DEFAULT_MOCK_VAULT_PATH
+  const sourcePath = args.sourcePath ?? args.source_path ?? ''
+  const filename = sourcePath.split(/[\\/]/).pop() ?? 'uploaded.md'
+  validateImportableMockFilename(filename)
+  const destinationFolder = args.destinationFolder ?? args.destination_folder ?? null
+  const trimmedFolder = destinationFolder?.trim() ?? ''
+  validateMockImportDestination(trimmedFolder)
+  const importedPath = [vaultPath.replace(/\/+$/g, ''), trimmedFolder, filename]
+    .filter(Boolean)
+    .join('/')
+
+  if (Object.hasOwn(MOCK_CONTENT, importedPath)) {
+    throw new Error(`File already exists: ${importedPath}`)
+  }
+
+  const isPdf = filename.toLowerCase().endsWith('.pdf')
+  writeMockContent({ path: importedPath, content: isPdf ? '' : `# ${titleFromMockFilename(filename)}
+` })
+  MOCK_ENTRIES.push({
+    path: importedPath,
+    filename,
+    title: titleFromMockFilename(filename),
+    isA: isPdf ? null : 'Note',
+    aliases: [],
+    belongsTo: [],
+    relatedTo: [],
+    status: null,
+    archived: false,
+    modifiedAt: Math.floor(Date.now() / 1000),
+    createdAt: Math.floor(Date.now() / 1000),
+    fileSize: isPdf ? 1024 : 32,
+    snippet: isPdf ? '' : `# ${titleFromMockFilename(filename)}`,
+    wordCount: isPdf ? 0 : 1,
+    relationships: {},
+    outgoingLinks: [],
+    properties: {},
+    fileKind: isPdf ? 'binary' : 'markdown',
+  })
+  syncWindowContent()
+  return importedPath
+}
+
 function replaceMockTitleFrontmatter({ content, newTitle }: { content: string; newTitle: string }) {
   return /^title:\s*/m.test(content)
     ? content.replace(/^title:\s*.*$/m, `title: ${newTitle}`)
@@ -529,6 +609,7 @@ export const mockHandlers: Record<string, (args: any) => any> = {
     const filename = args.source_path.split('/').pop() ?? 'image.png'
     return `${vault}/attachments/${Date.now()}-${filename}`
   },
+  import_file_to_vault: handleImportFileToVault,
   get_settings: () => ({ ...mockSettings }),
   save_settings: (args: { settings: Settings }) => {
     const s = args.settings

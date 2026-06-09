@@ -1,6 +1,7 @@
 use crate::commands::expand_tilde;
-use crate::vault::filename_rules::validate_folder_name;
+use crate::vault::filename_rules::{validate_filename_stem, validate_folder_name};
 use crate::vault::{self, FolderNode, VaultEntry};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use super::boundary::{
@@ -217,6 +218,92 @@ fn ensure_missing_folder(folder_path: &Path, folder_name: &str) -> Result<(), St
         return Err(format!("Folder '{}' already exists", folder_name));
     }
     Ok(())
+}
+
+const IMPORTABLE_FILE_EXTENSIONS: &[&str] = &["md", "markdown", "pdf"];
+
+fn file_extension(path: &Path) -> String {
+    path.extension()
+        .and_then(OsStr::to_str)
+        .unwrap_or("")
+        .to_ascii_lowercase()
+}
+
+fn validate_import_source(source_path: &Path) -> Result<&OsStr, String> {
+    if !source_path.exists() {
+        return Err(format!("Source file does not exist: {}", source_path.display()));
+    }
+    if !source_path.is_file() {
+        return Err(format!("Source path is not a file: {}", source_path.display()));
+    }
+
+    let extension = file_extension(source_path);
+    if !IMPORTABLE_FILE_EXTENSIONS.contains(&extension.as_str()) {
+        return Err(format!(
+            "Only Markdown and PDF files can be uploaded: {}",
+            source_path.display()
+        ));
+    }
+
+    let filename = source_path
+        .file_name()
+        .ok_or_else(|| "Source file must have a filename".to_string())?;
+    validate_import_filename(filename)?;
+    Ok(filename)
+}
+
+fn validate_import_filename(filename: &OsStr) -> Result<(), String> {
+    let filename = filename
+        .to_str()
+        .ok_or_else(|| "Filename must be valid UTF-8".to_string())?;
+    let stem = Path::new(filename)
+        .file_stem()
+        .and_then(OsStr::to_str)
+        .ok_or_else(|| "Filename must have a valid name".to_string())?;
+    validate_filename_stem(stem)
+}
+
+fn copy_import_file(source_path: &Path, target_path: &Path) -> Result<(), String> {
+    let mut source = std::fs::File::open(source_path)
+        .map_err(|error| format!("Failed to upload file: {}", error))?;
+    let mut target = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(target_path)
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                format!("File already exists: {}", target_path.display())
+            } else {
+                format!("Failed to upload file: {}", error)
+            }
+        })?;
+
+    match std::io::copy(&mut source, &mut target) {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            let _ = std::fs::remove_file(target_path);
+            Err(format!("Failed to upload file: {}", error))
+        }
+    }
+}
+
+#[tauri::command]
+pub fn import_file_to_vault(
+    vault_path: PathBuf,
+    source_path: PathBuf,
+    destination_folder: Option<PathBuf>,
+) -> Result<String, String> {
+    let raw_vault_path = vault_path.to_string_lossy();
+    with_boundary(Some(raw_vault_path.as_ref()), |boundary| {
+        let filename = validate_import_source(&source_path)?;
+        let relative_target = match destination_folder.as_deref() {
+            Some(folder) if !folder.as_os_str().is_empty() => folder.join(filename),
+            _ => PathBuf::from(filename),
+        };
+        let target_path = boundary.child_path(&relative_target.to_string_lossy())?;
+        copy_import_file(&source_path, &target_path)?;
+        Ok(target_path.to_string_lossy().into_owned())
+    })
 }
 
 fn scan_visible_vault_entries(vault_path: &Path) -> Result<Vec<VaultEntry>, String> {

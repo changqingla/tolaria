@@ -151,7 +151,7 @@ fn searchable_content(content: &str, exclude_frontmatter: bool) -> &str {
 }
 
 fn is_markdown_search_candidate(vault_dir: &Path, path: &Path) -> bool {
-    if !path.extension().is_some_and(|ext| ext == "md") {
+    if !crate::vault::is_md_file(path) {
         return false;
     }
 
@@ -366,6 +366,21 @@ mod tests {
 
         assert_eq!(response.results.len(), 1);
         assert_eq!(response.results[0].title, "Updated Display Title");
+    }
+
+    #[test]
+    fn test_search_vault_includes_markdown_extensions_case_insensitively() {
+        let dir = Builder::new()
+            .prefix("search-markdown-extension-")
+            .tempdir_in(std::env::current_dir().unwrap())
+            .unwrap();
+        fs::write(dir.path().join("Guide.MARKDOWN"), "# Guide\n\nneedle").unwrap();
+
+        let response =
+            search_vault(dir.path().to_str().unwrap(), "needle", "keyword", 10).unwrap();
+
+        assert_eq!(response.results.len(), 1);
+        assert_eq!(response.results[0].title, "Guide");
     }
 
     #[test]

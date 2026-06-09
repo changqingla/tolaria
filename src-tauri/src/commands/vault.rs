@@ -254,6 +254,93 @@ mod tests {
     }
 
     #[test]
+    fn test_import_file_to_vault_copies_markdown_into_selected_folder() {
+        let vault = tempfile::TempDir::new().unwrap();
+        let source_dir = tempfile::TempDir::new().unwrap();
+        let source_path = source_dir.path().join("Plan.md");
+        std::fs::write(&source_path, "# Plan
+").unwrap();
+        std::fs::create_dir_all(vault.path().join("Projects/2026")).unwrap();
+
+        let imported = import_file_to_vault(
+            vault.path().into(),
+            source_path,
+            Some(std::path::PathBuf::from("Projects/2026")),
+        )
+        .expect("expected markdown import to succeed");
+
+        let target = vault.path().join("Projects/2026/Plan.md");
+        assert_eq!(std::path::PathBuf::from(imported), target);
+        assert_eq!(std::fs::read_to_string(target).unwrap(), "# Plan
+");
+    }
+
+    #[test]
+    fn test_import_file_to_vault_copies_pdf_into_vault_root() {
+        let vault = tempfile::TempDir::new().unwrap();
+        let source_dir = tempfile::TempDir::new().unwrap();
+        let source_path = source_dir.path().join("Guide.pdf");
+        std::fs::write(&source_path, b"%PDF-1.7").unwrap();
+
+        let imported = import_file_to_vault(vault.path().into(), source_path, None)
+            .expect("expected pdf import to succeed");
+
+        let target = vault.path().join("Guide.pdf");
+        assert_eq!(std::path::PathBuf::from(imported), target);
+        assert_eq!(std::fs::read(target).unwrap(), b"%PDF-1.7");
+    }
+
+    #[test]
+    fn test_import_file_to_vault_rejects_unsupported_file_type() {
+        let vault = tempfile::TempDir::new().unwrap();
+        let source_dir = tempfile::TempDir::new().unwrap();
+        let source_path = source_dir.path().join("notes.docx");
+        std::fs::write(&source_path, b"docx").unwrap();
+
+        let err = import_file_to_vault(vault.path().into(), source_path, None)
+            .expect_err("expected unsupported import to be rejected");
+
+        assert!(err.contains("Only Markdown and PDF files can be uploaded"));
+        assert!(!vault.path().join("notes.docx").exists());
+    }
+
+    #[test]
+    fn test_import_file_to_vault_rejects_overwrite() {
+        let vault = tempfile::TempDir::new().unwrap();
+        let source_dir = tempfile::TempDir::new().unwrap();
+        let source_path = source_dir.path().join("Plan.md");
+        std::fs::write(&source_path, "# Imported
+").unwrap();
+        std::fs::write(vault.path().join("Plan.md"), "# Existing
+").unwrap();
+
+        let err = import_file_to_vault(vault.path().into(), source_path, None)
+            .expect_err("expected overwrite to be rejected");
+
+        assert!(err.contains("File already exists"));
+        assert_eq!(std::fs::read_to_string(vault.path().join("Plan.md")).unwrap(), "# Existing
+");
+    }
+
+    #[test]
+    fn test_import_file_to_vault_rejects_destination_escape() {
+        let vault = tempfile::TempDir::new().unwrap();
+        let source_dir = tempfile::TempDir::new().unwrap();
+        let source_path = source_dir.path().join("Plan.md");
+        std::fs::write(&source_path, "# Plan
+").unwrap();
+
+        let err = import_file_to_vault(
+            vault.path().into(),
+            source_path,
+            Some(std::path::PathBuf::from("../outside")),
+        )
+        .expect_err("expected escaping destination to be rejected");
+
+        assert_eq!(err, ACTIVE_VAULT_PATH_ERROR);
+    }
+
+    #[test]
     fn test_save_view_cmd_rejects_nested_filename() {
         assert_save_view_cmd_rejects_invalid_filename("../escape.yml");
     }

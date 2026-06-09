@@ -1,4 +1,4 @@
-import { CircleNotch as Loader2, MagnifyingGlass, Plus, SidebarSimple, X } from '@phosphor-icons/react'
+import { ArrowLineUp, CircleNotch as Loader2, MagnifyingGlass, Plus, SidebarSimple, X } from '@phosphor-icons/react'
 import type { VaultEntry } from '../../types'
 import type { SortOption, SortDirection } from '../../utils/noteListHelpers'
 import { translate, type AppLocale, type TranslationKey } from '../../lib/i18n'
@@ -53,6 +53,7 @@ interface NoteListHeaderProps {
   locale?: AppLocale
   onSortChange: (groupLabel: string, option: SortOption, direction: SortDirection) => void
   onCreateNote: () => void
+  onUploadFile?: () => void
   onOpenType: (entry: VaultEntry) => void
   onToggleSearch: () => void
   onSearchChange: (value: string) => void
@@ -170,6 +171,7 @@ function HeaderActions({
   locale,
   onSortChange,
   onCreateNote,
+  onUploadFile,
   onToggleSearch,
 }: Pick<
   NoteListHeaderProps,
@@ -181,6 +183,7 @@ function HeaderActions({
   | 'locale'
   | 'onSortChange'
   | 'onCreateNote'
+  | 'onUploadFile'
   | 'onToggleSearch'
 > & {
   locale: AppLocale
@@ -198,6 +201,11 @@ function HeaderActions({
           triggerClassName={NOTE_LIST_ACTION_BUTTON_CLASSNAME}
           locale={locale}
         />
+      )}
+      {onUploadFile && (
+        <Button type="button" variant="ghost" size="icon-xs" className={NOTE_LIST_ACTION_BUTTON_CLASSNAME} onClick={onUploadFile} title={translate(locale, 'noteList.uploadFile')} aria-label={translate(locale, 'noteList.uploadFile')}>
+          <ArrowLineUp size={16} />
+        </Button>
       )}
       <Button type="button" variant="ghost" size="icon-xs" className={NOTE_LIST_ACTION_BUTTON_CLASSNAME} onClick={onCreateNote} title={translate(locale, 'noteList.createNote')} aria-label={translate(locale, 'noteList.createNote')}>
         <Plus size={16} />
@@ -295,6 +303,7 @@ export function NoteListHeader({
   locale = 'en',
   onSortChange,
   onCreateNote,
+  onUploadFile,
   onOpenType,
   onToggleSearch,
   onSearchChange,
@@ -325,6 +334,7 @@ export function NoteListHeader({
           locale={locale}
           onSortChange={onSortChange}
           onCreateNote={onCreateNote}
+          onUploadFile={onUploadFile}
           onToggleSearch={onToggleSearch}
         />
       </div>

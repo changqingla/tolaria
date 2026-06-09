@@ -105,6 +105,19 @@ fn test_non_markdown_files_use_expected_titles_and_kinds() {
 }
 
 #[test]
+fn test_scan_vault_parses_markdown_extensions_case_insensitively() {
+    let dir = TempDir::new().unwrap();
+    create_test_file(dir.path(), "Guide.MD", "---\ntitle: Guide\n---\n# Guide\n");
+    create_test_file(dir.path(), "Readme.markdown", "---\ntitle: Readme\n---\n# Readme\n");
+
+    let entries = scan_vault(dir.path(), &Default::default()).unwrap();
+    let titles = entries.iter().map(|entry| entry.title.as_str()).collect::<Vec<_>>();
+
+    assert!(titles.contains(&"Guide"));
+    assert!(titles.contains(&"Readme"));
+}
+
+#[test]
 fn test_classify_file_kind_by_extension() {
     for (path, expected_kind) in [
         ("views/active-projects.yml", "text"),
@@ -113,7 +126,9 @@ fn test_classify_file_kind_by_extension() {
         ("script.py", "text"),
         ("readme.txt", "text"),
         ("note.md", "markdown"),
+        ("NOTE.MD", "markdown"),
         ("README.markdown", "markdown"),
+        ("README.MARKDOWN", "markdown"),
         ("photo.png", "binary"),
         ("archive.zip", "binary"),
     ] {

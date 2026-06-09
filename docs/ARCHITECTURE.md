@@ -756,6 +756,7 @@ The vault backend (`src-tauri/src/vault/`) is split into focused submodules:
 | `sync_note_title` | Legacy helper: rewrite `title` frontmatter from filename → `bool` (modified); not used by the normal note-open flow |
 | `batch_archive_notes` | Archive multiple notes |
 | `batch_delete_notes` | Permanently delete notes from disk |
+| `import_file_to_vault` | Copy an external Markdown or PDF file into the selected vault root/folder without overwriting existing files |
 | `reload_vault` | Allow the requested vault roots in the runtime asset scope, invalidate cache, full rescan from filesystem, then apply Gitignored-content visibility → `Vec<VaultEntry>` |
 | `reload_vault_entry` | Re-read a single file from disk → `VaultEntry` |
 | `open_vault_file_external` | Validate an existing file against the active vault boundary, then open it with the system default app |
@@ -861,7 +862,7 @@ if (isTauri()) {
 }
 ```
 
-The mock layer includes sample entries across all entity types, full markdown content with realistic frontmatter, mock git history, mock AI responses, and mock pulse commits. It also tracks per-vault remote state so browser-mode Getting Started and empty-vault flows now behave like the desktop app: local-only until `git_add_remote` succeeds.
+The mock layer includes sample entries across all entity types, full markdown content with realistic frontmatter, mock git history, mock AI responses, and mock pulse commits. It also tracks per-vault remote state so browser-mode Getting Started and empty-vault flows now behave like the desktop app: local-only until `git_add_remote` succeeds. File-import mocks mirror the desktop command boundary closely enough for browser tests: only Markdown/PDF uploads are accepted, destination folders must stay relative to the vault, and existing mock content is not overwritten.
 
 Browser smoke tests can also override `window.__mockHandlers` before the app boots. The AutoGit smoke bridge uses that path directly for seeded saves so the mocked git dirty-state stays synchronized even when the optional browser vault API is serving note content.
 

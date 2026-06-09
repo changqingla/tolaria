@@ -238,7 +238,14 @@ fn is_folder_tree_hidden_dir(name: &str) -> bool {
 }
 
 pub(crate) fn is_md_file(path: &Path) -> bool {
-    path.is_file() && path.extension().is_some_and(|ext| ext == "md")
+    path.is_file()
+        && path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| {
+                extension.eq_ignore_ascii_case("md")
+                    || extension.eq_ignore_ascii_case("markdown")
+            })
 }
 
 /// Extensions recognized as editable text files (opened in raw editor).

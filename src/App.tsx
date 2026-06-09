@@ -85,6 +85,8 @@ import { isAiWorkspaceWindow, isNoteWindow, getNoteWindowParams, type NoteWindow
 import { GitSetupDialog } from './components/GitRequiredModal'
 import { RenameDetectedBanner } from './components/RenameDetectedBanner'
 import { openNoteListPropertiesPicker } from './components/note-list/noteListPropertiesEvents'
+import { pickImportableVaultFile } from './utils/vault-dialog'
+import { uploadTargetForSelection } from './utils/fileUploadTarget'
 import type { NoteListMultiSelectionCommands } from './components/note-list/multiSelectionCommands'
 import { focusNoteIconPropertyEditor } from './components/noteIconPropertyEvents'
 import { trackEvent } from './lib/telemetry'
@@ -823,6 +825,43 @@ function MainApp({ noteWindowParams }: { noteWindowParams: NoteWindowParams | nu
       return false
     }
   }, [resolvedPath, vault])
+
+  const handleUploadFile = useCallback(async () => {
+    try {
+      const sourcePath = await pickImportableVaultFile({
+        title: translate(appLocale, 'noteList.uploadFile'),
+        filters: {
+          markdownAndPdf: translate(appLocale, 'noteList.uploadFilter.markdownAndPdf'),
+          markdown: translate(appLocale, 'noteList.uploadFilter.markdown'),
+          pdf: translate(appLocale, 'noteList.uploadFilter.pdf'),
+        },
+      })
+      if (!sourcePath) return
+
+      const { vaultPath: targetVaultPath, destinationFolder } = uploadTargetForSelection({
+        selection: effectiveSelection,
+        fallbackVaultPath: resolvedPath,
+      })
+      const args = { vaultPath: targetVaultPath, sourcePath, destinationFolder }
+      const importedPath = isTauri()
+        ? await invoke<string>('import_file_to_vault', args)
+        : await mockInvoke<string>('import_file_to_vault', args)
+
+      markRecentVaultWrite(importedPath)
+      const entries = await vault.reloadVault()
+      await vault.reloadFolders()
+      const importedEntry = entries.find((entry) => entry.path === importedPath)
+      if (importedEntry) notes.handleSelectNote(importedEntry)
+      setToastMessage(translate(appLocale, 'noteList.uploadFileSuccess', {
+        filename: importedPath.split(/[\\/]/).pop() ?? importedPath,
+      }))
+      trackEvent('note_list_file_uploaded', {
+        target: destinationFolder ? 'folder' : 'root',
+      })
+    } catch (error) {
+      setToastMessage(translate(appLocale, 'noteList.uploadFileFailed', { error: String(error) }))
+    }
+  }, [appLocale, effectiveSelection, markRecentVaultWrite, notes, resolvedPath, vault])
 
   const folderActions = useFolderActions({
     vaultPath: resolvedPath,
@@ -1601,7 +1640,7 @@ function MainApp({ noteWindowParams }: { noteWindowParams: NoteWindowParams | nu
                 {effectiveSelection.kind === 'filter' && effectiveSelection.filter === 'pulse' ? (
                   <PulseView vaultPath={gitSurfaces.historyRepositoryPath} onOpenNote={handlePulseOpenNote} refreshKey={gitHistoryRefreshKey} sidebarCollapsed={!sidebarVisible} onExpandSidebar={() => handleSetViewMode('all')} repositories={gitRepositories} selectedRepositoryPath={gitSurfaces.historyRepositoryPath} onRepositoryChange={gitSurfaces.setHistoryRepositoryPath} locale={appLocale} />
                 ) : (
-                  <NoteList entries={visibleEntries} selection={effectiveSelection} selectedNote={activeTab?.entry ?? null} loading={isVaultContentLoading} noteListFilter={noteListFilter} onNoteListFilterChange={setNoteListFilter} inboxPeriod={inboxPeriod} modifiedFiles={noteListModifiedFiles} modifiedFilesError={noteListModifiedFilesError} gitRepositories={gitRepositories} selectedGitRepositoryPath={gitSurfaces.changesRepositoryPath} onGitRepositoryChange={gitSurfaces.setChangesRepositoryPath} getNoteStatus={vault.getNoteStatus} sidebarCollapsed={!sidebarVisible} onSelectNote={notes.handleSelectNote} onReplaceActiveTab={handleReplaceActiveTabWithQueuedDiff} onEnterNeighborhood={handleEnterNeighborhood} onCreateNote={notes.handleCreateNoteImmediate} onBulkOrganize={explicitOrganizationEnabled ? bulkActions.handleBulkOrganize : undefined} onBulkArchive={bulkActions.handleBulkArchive} onBulkDeletePermanently={deleteActions.handleBulkDeletePermanently} onUpdateTypeSort={notes.handleUpdateFrontmatter} onUpdateViewDefinition={handleUpdateViewDefinition} updateEntry={vault.updateEntry} onOpenInNewWindow={handleOpenEntryInNewWindow} onExportPdf={handleExportNotePdfFromList} onToggleFavorite={entryActions.handleToggleFavorite} onToggleOrganized={explicitOrganizationEnabled ? entryActions.handleToggleOrganized : undefined} onRevealFile={fileActions.revealFile} onCopyFilePath={fileActions.copyFilePath} canCopyGitUrl={noteGitUrls.canCopyEntryGitUrl} onCopyGitUrl={noteGitUrls.copyEntryGitUrl} onDiscardFile={handleDiscardFile} onOpenDeletedNote={handleOpenDeletedNote} allNotesNoteListProperties={vaultConfig.allNotes?.noteListProperties ?? null} onUpdateAllNotesNoteListProperties={handleUpdateAllNotesNoteListProperties} inboxNoteListProperties={vaultConfig.inbox?.noteListProperties ?? null} onUpdateInboxNoteListProperties={handleUpdateInboxNoteListProperties} views={vault.views} visibleNotesRef={visibleNotesRef} allNotesFileVisibility={allNotesFileVisibility} multiSelectionCommandRef={multiSelectionCommandRef} locale={appLocale} />
+                  <NoteList entries={visibleEntries} selection={effectiveSelection} selectedNote={activeTab?.entry ?? null} loading={isVaultContentLoading} noteListFilter={noteListFilter} onNoteListFilterChange={setNoteListFilter} inboxPeriod={inboxPeriod} modifiedFiles={noteListModifiedFiles} modifiedFilesError={noteListModifiedFilesError} gitRepositories={gitRepositories} selectedGitRepositoryPath={gitSurfaces.changesRepositoryPath} onGitRepositoryChange={gitSurfaces.setChangesRepositoryPath} getNoteStatus={vault.getNoteStatus} sidebarCollapsed={!sidebarVisible} onSelectNote={notes.handleSelectNote} onReplaceActiveTab={handleReplaceActiveTabWithQueuedDiff} onEnterNeighborhood={handleEnterNeighborhood} onCreateNote={notes.handleCreateNoteImmediate} onUploadFile={handleUploadFile} onBulkOrganize={explicitOrganizationEnabled ? bulkActions.handleBulkOrganize : undefined} onBulkArchive={bulkActions.handleBulkArchive} onBulkDeletePermanently={deleteActions.handleBulkDeletePermanently} onUpdateTypeSort={notes.handleUpdateFrontmatter} onUpdateViewDefinition={handleUpdateViewDefinition} updateEntry={vault.updateEntry} onOpenInNewWindow={handleOpenEntryInNewWindow} onExportPdf={handleExportNotePdfFromList} onToggleFavorite={entryActions.handleToggleFavorite} onToggleOrganized={explicitOrganizationEnabled ? entryActions.handleToggleOrganized : undefined} onRevealFile={fileActions.revealFile} onCopyFilePath={fileActions.copyFilePath} canCopyGitUrl={noteGitUrls.canCopyEntryGitUrl} onCopyGitUrl={noteGitUrls.copyEntryGitUrl} onDiscardFile={handleDiscardFile} onOpenDeletedNote={handleOpenDeletedNote} allNotesNoteListProperties={vaultConfig.allNotes?.noteListProperties ?? null} onUpdateAllNotesNoteListProperties={handleUpdateAllNotesNoteListProperties} inboxNoteListProperties={vaultConfig.inbox?.noteListProperties ?? null} onUpdateInboxNoteListProperties={handleUpdateInboxNoteListProperties} views={vault.views} visibleNotesRef={visibleNotesRef} allNotesFileVisibility={allNotesFileVisibility} multiSelectionCommandRef={multiSelectionCommandRef} locale={appLocale} />
                 )}
               </div>
               <ResizeHandle onResize={layout.handleNoteListResize} />

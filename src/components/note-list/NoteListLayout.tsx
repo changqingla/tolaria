@@ -270,6 +270,7 @@ function NoteListLayoutHeader({
   propertyPicker,
   handleSortChange,
   handleCreateNote,
+  onUploadFile,
   onOpenType,
   toggleSearch,
   setSearch,
@@ -295,6 +296,7 @@ function NoteListLayoutHeader({
   | 'propertyPicker'
   | 'handleSortChange'
   | 'handleCreateNote'
+  | 'onUploadFile'
   | 'onOpenType'
   | 'toggleSearch'
   | 'setSearch'
@@ -321,6 +323,7 @@ function NoteListLayoutHeader({
       propertyPicker={propertyPicker}
       onSortChange={handleSortChange}
       onCreateNote={handleCreateNote}
+      onUploadFile={onUploadFile}
       onOpenType={onOpenType}
       onToggleSearch={toggleSearch}
       onSearchChange={setSearch}

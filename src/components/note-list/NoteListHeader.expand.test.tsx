@@ -59,3 +59,13 @@ describe('NoteListHeader expand sidebar button', () => {
     }
   })
 })
+
+describe('NoteListHeader upload action', () => {
+  it('localizes the upload button hover label in Simplified Chinese', () => {
+    renderHeader({ locale: 'zh-CN', onUploadFile: vi.fn() })
+
+    const uploadButton = screen.getByRole('button', { name: '上传文件' })
+
+    expect(uploadButton).toHaveAttribute('title', '上传文件')
+  })
+})

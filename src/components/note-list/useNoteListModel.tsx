@@ -551,6 +551,7 @@ export interface NoteListProps {
   onReplaceActiveTab: (entry: VaultEntry) => void
   onEnterNeighborhood?: (entry: VaultEntry) => void
   onCreateNote: (type?: string) => void
+  onUploadFile?: () => void
   onBulkArchive?: (paths: string[]) => void
   onBulkDeletePermanently?: (paths: string[]) => void
   onUpdateTypeSort?: (path: string, key: string, value: string | number | boolean | string[] | null) => void
@@ -590,6 +591,7 @@ function buildNoteListLayoutModel(params: {
   filterCounts: ReturnType<typeof useFilterCounts>
   onNoteListFilterChange: (filter: NoteListFilter) => void
   onOpenType: (entry: VaultEntry) => void
+  onUploadFile?: () => void
   locale: AppLocale
   content: ReturnType<typeof useNoteListContent> & {
     handleSearchKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
@@ -616,6 +618,7 @@ function buildNoteListLayoutModel(params: {
     propertyPicker: params.content.propertyPicker,
     handleSortChange: params.content.handleSortChange,
     handleCreateNote: params.interaction.handleCreateNote,
+    onUploadFile: params.onUploadFile,
     onOpenType: params.onOpenType,
     toggleSearch: params.content.toggleSearch,
     setSearch: params.content.setSearch,
@@ -682,6 +685,7 @@ export function useNoteListModel({
   onReplaceActiveTab,
   onEnterNeighborhood,
   onCreateNote,
+  onUploadFile,
   onBulkArchive,
   onBulkDeletePermanently,
   onUpdateTypeSort,
@@ -809,6 +813,7 @@ export function useNoteListModel({
     sidebarCollapsed,
     loading,
     onOpenType: onReplaceActiveTab,
+    onUploadFile,
     modifiedFilesError,
     gitRepositories,
     selectedGitRepositoryPath,
