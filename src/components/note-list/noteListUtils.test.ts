@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createNoteStatusResolver, resolveHeaderTitle, routeNoteClick, type ClickActions } from './noteListUtils'
+import { buildChangesEntries, createNoteStatusResolver, resolveHeaderTitle, routeNoteClick, type ClickActions } from './noteListUtils'
 import type { ModifiedFile } from '../../types'
 import type { SidebarSelection, VaultEntry } from '../../types'
 
@@ -135,5 +135,39 @@ describe('createNoteStatusResolver', () => {
     )
 
     expect(resolver('/other-vault/note.md')).toBe('new')
+  })
+})
+
+describe('buildChangesEntries', () => {
+  it('marks deleted PDF placeholders as binary files', () => {
+    const entries = buildChangesEntries([], [{
+      path: '/vault/Guide.pdf',
+      relativePath: 'Guide.pdf',
+      status: 'deleted',
+      binary: true,
+    }])
+
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({
+      filename: 'Guide.pdf',
+      title: 'Guide.pdf',
+      fileKind: 'binary',
+    })
+  })
+
+  it('marks deleted YAML placeholders as text files', () => {
+    const entries = buildChangesEntries([], [{
+      path: '/vault/views/focus.yml',
+      relativePath: 'views/focus.yml',
+      status: 'deleted',
+      deletedLines: 4,
+    }])
+
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({
+      filename: 'focus.yml',
+      title: 'focus.yml',
+      fileKind: 'text',
+    })
   })
 })

@@ -1,7 +1,8 @@
 use super::git_command;
+use crate::vault::classify_file_kind;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Component, Path};
 
 #[derive(Debug, Serialize, Clone)]
 pub struct ModifiedFile {
@@ -185,6 +186,14 @@ fn load_diff_stats(vault: &Path) -> Result<HashMap<String, DiffStats>, String> {
 
 fn count_worktree_lines(vault: &Path, relative_path: &Path) -> DiffStats {
     let full_path = vault.join(relative_path);
+    if classify_file_kind(&full_path) == "binary" {
+        return DiffStats {
+            added_lines: None,
+            deleted_lines: None,
+            binary: true,
+        };
+    }
+
     let added_lines = std::fs::read_to_string(full_path)
         .ok()
         .map(|content| content.lines().count());
@@ -213,6 +222,32 @@ fn resolve_diff_stats(
 
     let key = relative_path.to_string_lossy();
     diff_stats.get(key.as_ref()).copied().unwrap_or_default()
+}
+
+fn path_component_is_visible(component: Component<'_>) -> bool {
+    match component {
+        Component::CurDir => true,
+        Component::Normal(name) => !name.to_string_lossy().starts_with('.'),
+        _ => false,
+    }
+}
+
+fn is_visible_vault_relative_path(relative_path: &str) -> bool {
+    Path::new(relative_path)
+        .components()
+        .all(path_component_is_visible)
+}
+
+fn should_include_status_entry(
+    vault: &Path,
+    relative_path: &str,
+    status: FileChangeStatus,
+) -> bool {
+    if !is_visible_vault_relative_path(relative_path) {
+        return false;
+    }
+
+    status == FileChangeStatus::Deleted || vault.join(relative_path).is_file()
 }
 
 fn ensure_path_within_vault(vault: &Path, relative_path: &Path, abs: &Path) -> Result<(), String> {
@@ -310,12 +345,11 @@ fn get_modified_files_impl(vault: &Path, include_stats: bool) -> Result<Vec<Modi
     let files = parse_status_output(&output.stdout)
         .into_iter()
         .filter_map(|entry| {
-            // Only include markdown files
-            if !entry.relative_path.ends_with(".md") {
+            let status = FileChangeStatus::from_code(&entry.status_code);
+            if !should_include_status_entry(vault, &entry.relative_path, status) {
                 return None;
             }
 
-            let status = FileChangeStatus::from_code(&entry.status_code);
             let full_path = vault
                 .join(&entry.relative_path)
                 .to_string_lossy()
@@ -522,6 +556,37 @@ mod tests {
             modified[0].path.ends_with("/note/brand-new.md"),
             "Full path should end with relative path: {}",
             modified[0].path
+        );
+    }
+
+    #[test]
+    fn test_get_modified_files_includes_untracked_pdf() {
+        let file = expect_changed_file_after("Guide.pdf", "untracked", |vault, vp| {
+            write_and_commit_markdown(vault, vp, "init.md", "# Init\n");
+            fs::write(vault.join("Guide.pdf"), b"%PDF-1.7\nfake pdf bytes\n").unwrap();
+        });
+
+        assert_eq!(file.added_lines, None);
+        assert_eq!(file.deleted_lines, None);
+        assert!(file.binary);
+    }
+
+    #[test]
+    fn test_get_modified_files_skips_hidden_files() {
+        let dir = setup_git_repo();
+        let vault = dir.path();
+        let vp = vault.to_str().unwrap();
+
+        write_and_commit_markdown(vault, vp, "init.md", "# Init\n");
+        fs::write(vault.join(".secret.md"), "# Secret\n").unwrap();
+        fs::create_dir_all(vault.join(".hidden")).unwrap();
+        fs::write(vault.join(".hidden/note.md"), "# Hidden\n").unwrap();
+
+        let modified = get_modified_files(vp).unwrap();
+
+        assert!(
+            modified.is_empty(),
+            "hidden files should stay out of user-facing changes: {modified:?}"
         );
     }
 

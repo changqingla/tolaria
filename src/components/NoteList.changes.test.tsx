@@ -2,7 +2,7 @@ import { act, fireEvent, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { NoteList } from './NoteList'
 import type { ModifiedFile, SidebarSelection, VaultEntry } from '../types'
-import { allSelection, mockEntries, renderNoteList } from '../test-utils/noteListTestUtils'
+import { allSelection, makeEntry, mockEntries, renderNoteList } from '../test-utils/noteListTestUtils'
 
 const changesSelection: SidebarSelection = { kind: 'filter', filter: 'changes' }
 
@@ -121,6 +121,33 @@ describe('NoteList changes view', () => {
     expect(screen.getAllByTestId('change-stat-added').map((node) => node.textContent)).toEqual(
       expect.arrayContaining(['+42', '+3']),
     )
+  })
+
+  it('shows untracked PDF files in changes view with binary diff fallback', () => {
+    const pdfEntry = makeEntry({
+      path: '/Users/luca/Laputa/Guide.pdf',
+      filename: 'Guide.pdf',
+      title: 'Guide.pdf',
+      fileKind: 'binary',
+    })
+
+    renderNoteList({
+      entries: [pdfEntry, ...mockEntries],
+      selection: changesSelection,
+      modifiedFiles: [
+        {
+          path: pdfEntry.path,
+          relativePath: 'Guide.pdf',
+          status: 'untracked',
+          binary: true,
+        },
+      ],
+    })
+
+    expect(screen.getAllByText('Guide.pdf').length).toBeGreaterThan(0)
+    expect(screen.getByTestId('change-stat-fallback')).toHaveTextContent('Binary diff')
+    expect(screen.getByTestId('change-status-icon')).toHaveAttribute('title', 'Added')
+    expect(screen.queryByText('Build Laputa App')).not.toBeInTheDocument()
   })
 
   it('shows change-status icons for each modified file', () => {

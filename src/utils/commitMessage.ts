@@ -10,9 +10,14 @@ const VERB_MAP: Record<string, string> = {
 
 const MAX_LISTED_FILES = 3
 
-function noteName(relativePath: string): string {
+function isMarkdownPath(relativePath: string): boolean {
+  const lowerPath = relativePath.toLowerCase()
+  return lowerPath.endsWith('.md') || lowerPath.endsWith('.markdown')
+}
+
+function displayName(relativePath: string): string {
   const basename = relativePath.split('/').pop() ?? relativePath
-  return basename.replace(/\.md$/, '')
+  return isMarkdownPath(basename) ? basename.replace(/\.(md|markdown)$/i, '') : basename
 }
 
 function verb(files: ModifiedFile[]): string {
@@ -26,8 +31,9 @@ export function generateCommitMessage(files: ModifiedFile[]): string {
   if (files.length === 0) return ''
   const action = verb(files)
   if (files.length <= MAX_LISTED_FILES) {
-    const names = files.map((f) => noteName(f.relativePath)).join(', ')
+    const names = files.map((f) => displayName(f.relativePath)).join(', ')
     return `${action} ${names}`
   }
-  return `${action} ${files.length} notes`
+  const noun = files.every((file) => isMarkdownPath(file.relativePath)) ? 'notes' : 'files'
+  return `${action} ${files.length} ${noun}`
 }

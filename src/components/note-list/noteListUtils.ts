@@ -158,12 +158,114 @@ function applyChangeStats<T extends VaultEntry>(entry: T, file: ModifiedFile): T
   }
 }
 
+const TEXT_FILE_EXTENSIONS = new Set([
+  'yml',
+  'yaml',
+  'json',
+  'txt',
+  'toml',
+  'csv',
+  'xml',
+  'html',
+  'htm',
+  'css',
+  'scss',
+  'less',
+  'ts',
+  'tsx',
+  'js',
+  'jsx',
+  'py',
+  'rs',
+  'sh',
+  'bash',
+  'zsh',
+  'fish',
+  'rb',
+  'go',
+  'java',
+  'kt',
+  'c',
+  'cpp',
+  'h',
+  'hpp',
+  'swift',
+  'lua',
+  'sql',
+  'graphql',
+  'env',
+  'ini',
+  'cfg',
+  'conf',
+  'properties',
+  'makefile',
+  'dockerfile',
+  'gitignore',
+  'editorconfig',
+  'mdx',
+  'svelte',
+  'vue',
+  'astro',
+  'tf',
+  'hcl',
+  'nix',
+  'zig',
+  'hs',
+  'ml',
+  'ex',
+  'exs',
+  'erl',
+  'clj',
+  'lisp',
+  'el',
+  'vim',
+  'r',
+  'jl',
+  'ps1',
+  'bat',
+  'cmd',
+])
+
+const TEXT_FILE_NAMES = new Set([
+  'makefile',
+  'dockerfile',
+  'rakefile',
+  'gemfile',
+  'procfile',
+  'brewfile',
+  '.gitattributes',
+])
+
+function filenameFromRelativePath(relativePath: string): string {
+  return relativePath.split('/').pop() ?? relativePath
+}
+
+function extensionFromRelativePath(relativePath: string): string {
+  const filename = filenameFromRelativePath(relativePath)
+  const dotIndex = filename.lastIndexOf('.')
+  return dotIndex > 0 ? filename.slice(dotIndex + 1).toLowerCase() : ''
+}
+
+function deletedFileKindFromRelativePath(relativePath: string): VaultEntry['fileKind'] {
+  const lowerPath = relativePath.toLowerCase()
+  if (lowerPath.endsWith('.md') || lowerPath.endsWith('.markdown')) return 'markdown'
+  const filename = filenameFromRelativePath(relativePath).toLowerCase()
+  if (TEXT_FILE_NAMES.has(filename)) return 'text'
+  if (TEXT_FILE_EXTENSIONS.has(extensionFromRelativePath(relativePath))) return 'text'
+  return 'binary'
+}
+
+function titleFromDeletedFilename(filename: string, fileKind: VaultEntry['fileKind']): string {
+  return fileKind === 'markdown' ? filenameStemToTitle(filename) : filename
+}
+
 function createDeletedNoteEntry(file: ModifiedFile): DeletedNoteEntry {
   const filename = file.relativePath.split('/').pop() ?? file.relativePath
+  const fileKind = deletedFileKindFromRelativePath(file.relativePath)
   return {
     path: file.path,
     filename,
-    title: filenameStemToTitle(filename),
+    title: titleFromDeletedFilename(filename, fileKind),
     isA: 'Note',
     aliases: [],
     belongsTo: [],
@@ -191,7 +293,7 @@ function createDeletedNoteEntry(file: ModifiedFile): DeletedNoteEntry {
     outgoingLinks: [],
     properties: {},
     hasH1: true,
-    fileKind: 'markdown',
+    fileKind,
     __deletedNotePreview: true,
     __deletedRelativePath: file.relativePath,
     __changeAddedLines: file.addedLines ?? null,

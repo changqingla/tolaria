@@ -5,7 +5,10 @@ function pluralize(count: number, singular: string, plural: string): string {
 }
 
 function allFilesAreNotes(files: ModifiedFile[]): boolean {
-  return files.every((file) => file.relativePath.toLowerCase().endsWith('.md'))
+  return files.every((file) => {
+    const lowerPath = file.relativePath.toLowerCase()
+    return lowerPath.endsWith('.md') || lowerPath.endsWith('.markdown')
+  })
 }
 
 export function generateAutomaticCommitMessage(files: ModifiedFile[]): string {

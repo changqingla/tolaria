@@ -31,8 +31,13 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 })
 
+const promptMock = vi.fn()
+Object.defineProperty(globalThis, 'prompt', { value: promptMock, writable: true })
+Object.defineProperty(window, 'prompt', { value: promptMock, writable: true })
+
 // Mock @tauri-apps/api/core before importing App
 vi.mock('@tauri-apps/api/core', () => ({
+  convertFileSrc: (path: string) => `asset://${path}`,
   invoke: vi.fn(),
 }))
 
@@ -477,6 +482,7 @@ function createMockUpdaterResult(
 describe('App', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    promptMock.mockReturnValue(null)
     resetMockCommandResults()
     vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => resolveMockCommandResult(cmd, args))
     vi.mocked(isTauri).mockReturnValue(false)
@@ -661,6 +667,53 @@ describe('App', () => {
     } finally {
       dateNow.mockRestore()
     }
+  })
+
+  it('refreshes git changes after uploading a PDF file', async () => {
+    const importedPdfEntry = {
+      ...mockEntries[0],
+      path: '/vault/Guide.pdf',
+      filename: 'Guide.pdf',
+      title: 'Guide.pdf',
+      isA: null,
+      fileKind: 'binary' as const,
+      wordCount: 0,
+    }
+    const listVault = vi.fn(() => mockEntries)
+    const importFile = vi.fn(() => importedPdfEntry.path)
+    const getModifiedFiles = vi.fn(() => [])
+    mockCommandResults.list_vault = listVault
+    mockCommandResults.import_file_to_vault = importFile
+    mockCommandResults.get_modified_files = getModifiedFiles
+    promptMock.mockReturnValue('/tmp/Guide.pdf')
+
+    render(<App />)
+
+    await screen.findByText('All Notes')
+    listVault.mockImplementation(() => [importedPdfEntry, ...mockEntries])
+    const callsBeforeUpload = getModifiedFiles.mock.calls.length
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Upload file' }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(importFile).toHaveBeenCalledWith({
+        vaultPath: '/vault',
+        sourcePath: '/tmp/Guide.pdf',
+        destinationFolder: null,
+      })
+    })
+    await waitFor(() => {
+      expect(getModifiedFiles.mock.calls.length).toBeGreaterThan(callsBeforeUpload)
+    })
+    expect(getModifiedFiles.mock.calls.some(([args]) => (
+      args && typeof args === 'object'
+        && (args as { vaultPath?: string; includeStats?: boolean }).vaultPath === '/vault'
+        && (args as { vaultPath?: string; includeStats?: boolean }).includeStats === false
+    ))).toBe(true)
   })
 
   it('shows visible feedback when a manual update check finds an update', async () => {

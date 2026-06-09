@@ -18,6 +18,7 @@ describe('generateAutomaticCommitMessage', () => {
   it('counts markdown files as notes', () => {
     expect(generateAutomaticCommitMessage([file('note-a.md')])).toBe('Updated 1 note')
     expect(generateAutomaticCommitMessage([file('note-a.md'), file('note-b.md')])).toBe('Updated 2 notes')
+    expect(generateAutomaticCommitMessage([file('note-a.markdown')])).toBe('Updated 1 note')
   })
 
   it('falls back to files when any modified path is not markdown', () => {

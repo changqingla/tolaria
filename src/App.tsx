@@ -850,6 +850,9 @@ function MainApp({ noteWindowParams }: { noteWindowParams: NoteWindowParams | nu
       markRecentVaultWrite(importedPath)
       const entries = await vault.reloadVault()
       await vault.reloadFolders()
+      if (gitFeaturesEnabled) {
+        await loadModifiedFilesForRepository(targetVaultPath, { includeStats: isChangesSelection })
+      }
       const importedEntry = entries.find((entry) => entry.path === importedPath)
       if (importedEntry) notes.handleSelectNote(importedEntry)
       setToastMessage(translate(appLocale, 'noteList.uploadFileSuccess', {
@@ -861,7 +864,7 @@ function MainApp({ noteWindowParams }: { noteWindowParams: NoteWindowParams | nu
     } catch (error) {
       setToastMessage(translate(appLocale, 'noteList.uploadFileFailed', { error: String(error) }))
     }
-  }, [appLocale, effectiveSelection, markRecentVaultWrite, notes, resolvedPath, vault])
+  }, [appLocale, effectiveSelection, gitFeaturesEnabled, isChangesSelection, loadModifiedFilesForRepository, markRecentVaultWrite, notes, resolvedPath, vault])
 
   const folderActions = useFolderActions({
     vaultPath: resolvedPath,

@@ -19,6 +19,14 @@ describe('generateCommitMessage', () => {
     expect(generateCommitMessage([file('thoughts-on-testing.md')])).toBe('Update thoughts-on-testing')
   })
 
+  it('strips .markdown extension from the name', () => {
+    expect(generateCommitMessage([file('thoughts-on-testing.markdown')])).toBe('Update thoughts-on-testing')
+  })
+
+  it('keeps non-markdown extensions in the name', () => {
+    expect(generateCommitMessage([file('Guide.pdf', 'untracked')])).toBe('Add Guide.pdf')
+  })
+
   it('uses basename for files in subdirectories', () => {
     expect(generateCommitMessage([file('notes/deep/idea.md')])).toBe('Update idea')
   })
@@ -45,6 +53,16 @@ describe('generateCommitMessage', () => {
       file('d.md'),
     ])
     expect(msg).toBe('Update 4 notes')
+  })
+
+  it('uses file count wording when 4+ changes include non-markdown files', () => {
+    const msg = generateCommitMessage([
+      file('a.md'),
+      file('b.md'),
+      file('c.md'),
+      file('Guide.pdf'),
+    ])
+    expect(msg).toBe('Update 4 files')
   })
 
   it('says "Add" for a single new/untracked file', () => {
