@@ -2,6 +2,10 @@ export const EDITOR_CONTAINER_SELECTOR = '.editor__blocknote-container'
 
 const EDITOR_EDITABLE_SELECTOR = `${EDITOR_CONTAINER_SELECTOR} [contenteditable="true"]`
 
+function hasDomSelectionEnvironment(): boolean {
+  return typeof document !== 'undefined' && typeof window !== 'undefined'
+}
+
 function getElementForNode(node: Node | null): Element | null {
   if (node instanceof Element) return node
   return node?.parentElement ?? null
@@ -47,6 +51,8 @@ function blurEditorEditableElements(): void {
 }
 
 export function clearEditorDomSelection(): void {
+  if (!hasDomSelectionEnvironment()) return
+
   const containers = getEditorContainers()
   if (containers.length === 0) return
 

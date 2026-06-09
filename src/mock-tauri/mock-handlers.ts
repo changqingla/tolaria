@@ -251,6 +251,53 @@ function titleFromMockFilename(filename: string) {
     .replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
+function createMockImportedEntry({
+  filename,
+  importedPath,
+  isPdf,
+  timestamp,
+}: {
+  filename: string
+  importedPath: string
+  isPdf: boolean
+  timestamp: number
+}): VaultEntry {
+  const title = titleFromMockFilename(filename)
+  return {
+    path: importedPath,
+    filename,
+    title,
+    isA: isPdf ? null : 'Note',
+    aliases: [],
+    belongsTo: [],
+    relatedTo: [],
+    status: null,
+    archived: false,
+    modifiedAt: timestamp,
+    createdAt: timestamp,
+    fileSize: isPdf ? 1024 : 32,
+    snippet: isPdf ? '' : `# ${title}`,
+    wordCount: isPdf ? 0 : 1,
+    relationships: {},
+    icon: null,
+    color: null,
+    order: null,
+    sidebarLabel: null,
+    template: null,
+    sort: null,
+    view: null,
+    visible: null,
+    organized: false,
+    favorite: false,
+    favoriteIndex: null,
+    listPropertiesDisplay: [],
+    outgoingLinks: [],
+    properties: {},
+    hasH1: !isPdf,
+    fileKind: isPdf ? 'binary' : 'markdown',
+  }
+}
+
 function handleImportFileToVault(args: {
   vaultPath?: string
   vault_path?: string
@@ -277,26 +324,12 @@ function handleImportFileToVault(args: {
   const isPdf = filename.toLowerCase().endsWith('.pdf')
   writeMockContent({ path: importedPath, content: isPdf ? '' : `# ${titleFromMockFilename(filename)}
 ` })
-  MOCK_ENTRIES.push({
-    path: importedPath,
+  MOCK_ENTRIES.push(createMockImportedEntry({
     filename,
-    title: titleFromMockFilename(filename),
-    isA: isPdf ? null : 'Note',
-    aliases: [],
-    belongsTo: [],
-    relatedTo: [],
-    status: null,
-    archived: false,
-    modifiedAt: Math.floor(Date.now() / 1000),
-    createdAt: Math.floor(Date.now() / 1000),
-    fileSize: isPdf ? 1024 : 32,
-    snippet: isPdf ? '' : `# ${titleFromMockFilename(filename)}`,
-    wordCount: isPdf ? 0 : 1,
-    relationships: {},
-    outgoingLinks: [],
-    properties: {},
-    fileKind: isPdf ? 'binary' : 'markdown',
-  })
+    importedPath,
+    isPdf,
+    timestamp: Math.floor(Date.now() / 1000),
+  }))
   syncWindowContent()
   return importedPath
 }
