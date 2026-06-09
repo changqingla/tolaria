@@ -258,8 +258,12 @@ mod tests {
         let vault = tempfile::TempDir::new().unwrap();
         let source_dir = tempfile::TempDir::new().unwrap();
         let source_path = source_dir.path().join("Plan.md");
-        std::fs::write(&source_path, "# Plan
-").unwrap();
+        std::fs::write(
+            &source_path,
+            "# Plan
+",
+        )
+        .unwrap();
         std::fs::create_dir_all(vault.path().join("Projects/2026")).unwrap();
 
         let imported = import_file_to_vault(
@@ -271,8 +275,11 @@ mod tests {
 
         let target = vault.path().join("Projects/2026/Plan.md");
         assert_eq!(std::path::PathBuf::from(imported), target);
-        assert_eq!(std::fs::read_to_string(target).unwrap(), "# Plan
-");
+        assert_eq!(
+            std::fs::read_to_string(target).unwrap(),
+            "# Plan
+"
+        );
     }
 
     #[test]
@@ -309,17 +316,28 @@ mod tests {
         let vault = tempfile::TempDir::new().unwrap();
         let source_dir = tempfile::TempDir::new().unwrap();
         let source_path = source_dir.path().join("Plan.md");
-        std::fs::write(&source_path, "# Imported
-").unwrap();
-        std::fs::write(vault.path().join("Plan.md"), "# Existing
-").unwrap();
+        std::fs::write(
+            &source_path,
+            "# Imported
+",
+        )
+        .unwrap();
+        std::fs::write(
+            vault.path().join("Plan.md"),
+            "# Existing
+",
+        )
+        .unwrap();
 
         let err = import_file_to_vault(vault.path().into(), source_path, None)
             .expect_err("expected overwrite to be rejected");
 
         assert!(err.contains("File already exists"));
-        assert_eq!(std::fs::read_to_string(vault.path().join("Plan.md")).unwrap(), "# Existing
-");
+        assert_eq!(
+            std::fs::read_to_string(vault.path().join("Plan.md")).unwrap(),
+            "# Existing
+"
+        );
     }
 
     #[test]
@@ -327,8 +345,12 @@ mod tests {
         let vault = tempfile::TempDir::new().unwrap();
         let source_dir = tempfile::TempDir::new().unwrap();
         let source_path = source_dir.path().join("Plan.md");
-        std::fs::write(&source_path, "# Plan
-").unwrap();
+        std::fs::write(
+            &source_path,
+            "# Plan
+",
+        )
+        .unwrap();
 
         let err = import_file_to_vault(
             vault.path().into(),

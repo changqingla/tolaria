@@ -231,10 +231,16 @@ fn file_extension(path: &Path) -> String {
 
 fn validate_import_source(source_path: &Path) -> Result<&OsStr, String> {
     if !source_path.exists() {
-        return Err(format!("Source file does not exist: {}", source_path.display()));
+        return Err(format!(
+            "Source file does not exist: {}",
+            source_path.display()
+        ));
     }
     if !source_path.is_file() {
-        return Err(format!("Source path is not a file: {}", source_path.display()));
+        return Err(format!(
+            "Source path is not a file: {}",
+            source_path.display()
+        ));
     }
 
     let extension = file_extension(source_path);

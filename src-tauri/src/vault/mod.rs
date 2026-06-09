@@ -243,8 +243,7 @@ pub(crate) fn is_md_file(path: &Path) -> bool {
             .extension()
             .and_then(|extension| extension.to_str())
             .is_some_and(|extension| {
-                extension.eq_ignore_ascii_case("md")
-                    || extension.eq_ignore_ascii_case("markdown")
+                extension.eq_ignore_ascii_case("md") || extension.eq_ignore_ascii_case("markdown")
             })
 }
 

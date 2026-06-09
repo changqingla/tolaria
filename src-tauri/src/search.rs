@@ -376,8 +376,7 @@ mod tests {
             .unwrap();
         fs::write(dir.path().join("Guide.MARKDOWN"), "# Guide\n\nneedle").unwrap();
 
-        let response =
-            search_vault(dir.path().to_str().unwrap(), "needle", "keyword", 10).unwrap();
+        let response = search_vault(dir.path().to_str().unwrap(), "needle", "keyword", 10).unwrap();
 
         assert_eq!(response.results.len(), 1);
         assert_eq!(response.results[0].title, "Guide");

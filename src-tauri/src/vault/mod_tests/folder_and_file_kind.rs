@@ -108,10 +108,17 @@ fn test_non_markdown_files_use_expected_titles_and_kinds() {
 fn test_scan_vault_parses_markdown_extensions_case_insensitively() {
     let dir = TempDir::new().unwrap();
     create_test_file(dir.path(), "Guide.MD", "---\ntitle: Guide\n---\n# Guide\n");
-    create_test_file(dir.path(), "Readme.markdown", "---\ntitle: Readme\n---\n# Readme\n");
+    create_test_file(
+        dir.path(),
+        "Readme.markdown",
+        "---\ntitle: Readme\n---\n# Readme\n",
+    );
 
     let entries = scan_vault(dir.path(), &Default::default()).unwrap();
-    let titles = entries.iter().map(|entry| entry.title.as_str()).collect::<Vec<_>>();
+    let titles = entries
+        .iter()
+        .map(|entry| entry.title.as_str())
+        .collect::<Vec<_>>();
 
     assert!(titles.contains(&"Guide"));
     assert!(titles.contains(&"Readme"));
