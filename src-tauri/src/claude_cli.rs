@@ -254,16 +254,27 @@ where
     F: FnMut(ClaudeStreamEvent),
 {
     let bin = find_claude_binary()?;
+    run_chat_stream_with_binary(&bin, req, &mut emit)
+}
+
+fn run_chat_stream_with_binary<F>(
+    bin: &Path,
+    req: ChatStreamRequest,
+    emit: &mut F,
+) -> Result<String, String>
+where
+    F: FnMut(ClaudeStreamEvent),
+{
     let invocation = crate::claude_invocation::chat(&req);
     run_claude_subprocess(
         ClaudeSubprocessRequest {
-            bin: &bin,
+            bin,
             args: &invocation.args,
             fallback_args: &invocation.fallback_args,
             stdin_text: invocation.stdin_text.as_deref(),
             cwd: None,
         },
-        &mut emit,
+        emit,
     )
 }
 
@@ -273,16 +284,27 @@ where
     F: FnMut(ClaudeStreamEvent),
 {
     let bin = find_claude_binary()?;
+    run_agent_stream_with_binary(&bin, req, &mut emit)
+}
+
+fn run_agent_stream_with_binary<F>(
+    bin: &Path,
+    req: AgentStreamRequest,
+    emit: &mut F,
+) -> Result<String, String>
+where
+    F: FnMut(ClaudeStreamEvent),
+{
     let invocation = crate::claude_invocation::agent(&req)?;
     run_claude_subprocess(
         ClaudeSubprocessRequest {
-            bin: &bin,
+            bin,
             args: &invocation.args,
             fallback_args: &invocation.fallback_args,
             stdin_text: invocation.stdin_text.as_deref(),
             cwd: Some(&req.vault_path),
         },
-        &mut emit,
+        emit,
     )
 }
 
@@ -701,7 +723,6 @@ fn extract_tool_result_text(json: &serde_json::Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai_agents::AiAgentPermissionMode;
     use std::ffi::OsStr;
     use std::ffi::OsString;
     use std::process::Command;
@@ -1219,11 +1240,7 @@ mod tests {
         args: MockClaudeArgs<'_>,
         stdin_text: MockClaudeStdin<'_>,
     ) -> (Result<String, String>, Vec<ClaudeStreamEvent>) {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("mock-claude");
-        std::fs::write(&path, script.0).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let (_dir, path) = executable_mock_script(script);
         let mut events = vec![];
         let result = run_claude_subprocess(
             ClaudeSubprocessRequest {
@@ -1236,6 +1253,16 @@ mod tests {
             &mut |e| events.push(e),
         );
         (result, events)
+    }
+
+    #[cfg(unix)]
+    fn executable_mock_script(script: MockClaudeScript<'_>) -> (tempfile::TempDir, PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mock-claude");
+        std::fs::write(&path, script.0).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        (dir, path)
     }
 
     #[cfg(unix)]
@@ -1550,32 +1577,62 @@ mod tests {
 
     // --- run_chat_stream / run_agent_stream error paths ---
 
+    #[cfg(unix)]
     #[test]
     fn run_chat_stream_returns_result() {
+        let (_dir, binary) = executable_mock_script(MockClaudeScript(concat!(
+            "#!/bin/sh\n",
+            "echo '{\"type\":\"result\",\"result\":\"chat ok\",\"session_id\":\"chat-session\"}'\n",
+        )));
         let req = ChatStreamRequest {
             message: "test".into(),
             system_prompt: None,
             session_id: None,
         };
         let mut events = vec![];
-        // This will either succeed (if claude is installed) or fail (if not).
-        let result = run_chat_stream(req, |e| events.push(e));
-        // Either way the function should have returned without panicking.
-        assert!(result.is_ok() || result.is_err());
+        let result = run_chat_stream_with_binary(&binary, req, &mut |event| events.push(event));
+
+        assert_eq!(result.unwrap(), "chat-session");
+        assert!(matches!(
+            events.first(),
+            Some(ClaudeStreamEvent::Result { text, session_id })
+                if text == "chat ok" && session_id == "chat-session"
+        ));
+        assert!(matches!(events.last(), Some(ClaudeStreamEvent::Done)));
     }
 
+    #[cfg(unix)]
     #[test]
     fn run_agent_stream_returns_result() {
+        let vault = tempfile::tempdir().unwrap();
+        let (_dir, binary) = executable_mock_script(MockClaudeScript(concat!(
+            "#!/bin/sh\n",
+            "echo '{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"agent-session\"}'\n",
+            "echo '{\"type\":\"result\",\"result\":\"agent ok\",\"session_id\":\"agent-session\"}'\n",
+        )));
         let req = AgentStreamRequest {
             message: "test".into(),
             system_prompt: Some("sys".into()),
-            vault_path: "/tmp/nonexistent".into(),
+            vault_path: vault.path().to_string_lossy().into_owned(),
             vault_paths: Vec::new(),
-            permission_mode: AiAgentPermissionMode::Safe,
+            permission_mode: crate::ai_agents::AiAgentPermissionMode::Safe,
         };
         let mut events = vec![];
-        let result = run_agent_stream(req, |e| events.push(e));
-        assert!(result.is_ok() || result.is_err());
+        let result = run_agent_stream_with_binary(&binary, req, &mut |event| events.push(event));
+
+        assert_eq!(result.unwrap(), "agent-session");
+        assert!(matches!(
+            events.first(),
+            Some(ClaudeStreamEvent::Init { session_id }) if session_id == "agent-session"
+        ));
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                ClaudeStreamEvent::Result { text, session_id }
+                    if text == "agent ok" && session_id == "agent-session"
+            )
+        }));
+        assert!(matches!(events.last(), Some(ClaudeStreamEvent::Done)));
     }
 
     #[test]

@@ -102,6 +102,7 @@ interface UseTabSwapEffectOptions extends Omit<RunTabSwapEffectOptions, 'vaultPa
 type ParsedBlockPreloadEvent = { path: string; content: string }
 
 function signalEditorTabSwapped(path: string): void {
+  if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent('laputa:editor-tab-swapped', {
     detail: { path },
   }))

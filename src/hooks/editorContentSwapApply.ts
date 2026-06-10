@@ -96,6 +96,7 @@ function commitAppliedEditorContent(options: AppliedEditorContentCommit) {
   requestNextFrame(() => {
     editorContentPathRef.current = targetPath
     suppressChangeRef.current = false
+    if (typeof document === 'undefined') return
     const scrollEl = document.querySelector(EDITOR_CONTAINER_SELECTOR)
     if (scrollEl) scrollEl.scrollTop = scrollTop
   })
