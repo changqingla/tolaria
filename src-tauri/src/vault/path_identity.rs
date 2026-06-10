@@ -40,23 +40,6 @@ pub(crate) fn has_hidden_segment(path: &RelativePathText) -> bool {
         .any(|segment| segment.starts_with('.'))
 }
 
-pub(crate) fn push_unique_relative_path(
-    paths: &mut Vec<String>,
-    path: impl AsRef<RelativePathText>,
-) {
-    let normalized = normalize_relative_path(path.as_ref());
-    if normalized.is_empty() || has_hidden_segment(&normalized) {
-        return;
-    }
-    let key = relative_path_key(&normalized);
-    if !paths
-        .iter()
-        .any(|existing| relative_path_key(existing) == key)
-    {
-        paths.push(normalized);
-    }
-}
-
 pub(crate) fn vault_relative_path_string(vault: &Path, file: &Path) -> Result<String, String> {
     let vault_path = normalize_path_for_identity(&vault.to_string_lossy());
     let file_path = normalize_path_for_identity(&file.to_string_lossy());
@@ -104,14 +87,21 @@ mod tests {
 
     #[test]
     fn test_relative_path_key_is_case_insensitive_without_changing_output_path() {
-        let mut paths = vec![];
-        push_unique_relative_path(&mut paths, "Projects\\Active.md");
-        push_unique_relative_path(&mut paths, "projects/active.md");
-
-        assert_eq!(paths, vec!["Projects/Active.md"]);
+        assert_eq!(
+            normalize_relative_path("Projects\\Active.md"),
+            "Projects/Active.md"
+        );
+        assert_eq!(
+            normalize_relative_path("projects/active.md"),
+            "projects/active.md"
+        );
         assert_eq!(
             relative_path_key("Projects\\Active.md"),
             "projects/active.md"
+        );
+        assert_eq!(
+            relative_path_key("Projects\\Active.md"),
+            relative_path_key("projects/active.md")
         );
     }
 }

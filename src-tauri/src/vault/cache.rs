@@ -10,7 +10,7 @@ use crate::git::{get_all_file_dates, GitDates};
 use std::collections::HashMap;
 
 use super::path_identity::{
-    normalize_path_for_identity, push_unique_relative_path, relative_path_key,
+    has_hidden_segment, normalize_path_for_identity, normalize_relative_path, relative_path_key,
     vault_relative_path_string,
 };
 use super::{is_md_file, parse_md_file, parse_non_md_file, scan_vault, VaultEntry};
@@ -148,13 +148,38 @@ fn parse_porcelain_line(line: &str) -> Option<(&str, String)> {
     Some((&line[..2], line[3..].trim().to_string()))
 }
 
+fn push_unique_changed_path(paths: &mut Vec<String>, path: impl AsRef<str>) {
+    let normalized = normalize_relative_path(path.as_ref());
+    if normalized.is_empty() || has_hidden_segment(&normalized) {
+        return;
+    }
+    if !paths
+        .iter()
+        .any(|existing| normalize_relative_path(existing) == normalized)
+    {
+        paths.push(normalized);
+    }
+}
+
+fn push_porcelain_changed_paths(paths: &mut Vec<String>, status_code: &str, path: &str) {
+    if (status_code.contains('R') || status_code.contains('C')) && path.contains(" -> ") {
+        if let Some((old_path, new_path)) = path.split_once(" -> ") {
+            push_unique_changed_path(paths, old_path);
+            push_unique_changed_path(paths, new_path);
+            return;
+        }
+    }
+
+    push_unique_changed_path(paths, path);
+}
+
 /// Extract file paths from git diff --name-only output.
 /// Includes all non-hidden files (not just .md) so the cache picks up
 /// view files (.yml), binary assets, etc.
 fn collect_paths_from_diff(stdout: &str) -> Vec<String> {
     let mut paths = Vec::new();
     for line in stdout.lines() {
-        push_unique_relative_path(&mut paths, line);
+        push_unique_changed_path(&mut paths, line);
     }
     paths
 }
@@ -164,8 +189,8 @@ fn collect_paths_from_diff(stdout: &str) -> Vec<String> {
 /// every file type the vault scanner recognises.
 fn collect_paths_from_porcelain(stdout: &str) -> Vec<String> {
     let mut paths = Vec::new();
-    for (_, path) in stdout.lines().filter_map(parse_porcelain_line) {
-        push_unique_relative_path(&mut paths, path);
+    for (status_code, path) in stdout.lines().filter_map(parse_porcelain_line) {
+        push_porcelain_changed_paths(&mut paths, status_code, &path);
     }
     paths
 }
@@ -180,7 +205,7 @@ fn git_changed_files(vault: &Path, from_hash: &str, to_hash: &str) -> Vec<String
     let uncommitted = git_uncommitted_files(vault);
 
     for path in uncommitted.into_iter() {
-        push_unique_relative_path(&mut files, path);
+        push_unique_changed_path(&mut files, path);
     }
 
     files
@@ -199,14 +224,14 @@ fn git_uncommitted_files(vault: &Path) -> Vec<String> {
         .map(|s| {
             let mut paths = Vec::new();
             for line in s.lines() {
-                push_unique_relative_path(&mut paths, line);
+                push_unique_changed_path(&mut paths, line);
             }
             paths
         })
         .unwrap_or_default();
 
     for path in untracked {
-        push_unique_relative_path(&mut files, path);
+        push_unique_changed_path(&mut files, path);
     }
 
     files
@@ -815,6 +840,22 @@ mod tests {
                 Path::new("/private/tmp/tolaria-vault")
             ),
             "projects/active.md"
+        );
+    }
+
+    #[test]
+    fn test_collect_paths_from_diff_preserves_case_only_rename_paths() {
+        assert_eq!(
+            collect_paths_from_diff("Note.md\nnote.md\n"),
+            vec!["Note.md".to_string(), "note.md".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_collect_paths_from_porcelain_splits_renames() {
+        assert_eq!(
+            collect_paths_from_porcelain("R  Note.md -> note.md\n"),
+            vec!["Note.md".to_string(), "note.md".to_string()]
         );
     }
 
