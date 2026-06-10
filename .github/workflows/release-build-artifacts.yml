@@ -13,10 +13,6 @@ on:
       upload_macos_dmg:
         required: true
         type: boolean
-      require_windows_authenticode:
-        required: false
-        type: boolean
-        default: true
 
 env:
   # Bump this when Tauri/Rust target artifacts capture stale absolute paths.
@@ -425,7 +421,6 @@ jobs:
           WINDOWS_CODE_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CODE_SIGNING_CERTIFICATE_PASSWORD }}
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-          REQUIRE_WINDOWS_AUTHENTICODE: ${{ inputs.require_windows_authenticode }}
         run: |
           for name in TAURI_SIGNING_PRIVATE_KEY TAURI_KEY_PASSWORD; do
             if [ -z "${!name}" ]; then
@@ -444,17 +439,14 @@ jobs:
           fi
 
           if [ "$has_certificate" != "$has_password" ]; then
-            echo "::error::Windows Authenticode signing is partially configured. Set both certificate and password secrets, or remove both for unsigned alpha Windows artifacts."
+            echo "::error::Windows Authenticode signing is partially configured. Set both certificate and password secrets, or remove both to build with Tauri updater signatures only."
             exit 1
           fi
 
           if [ "$has_certificate" = "true" ]; then
             echo "authenticode_available=true" >> "$GITHUB_OUTPUT"
-          elif [ "$REQUIRE_WINDOWS_AUTHENTICODE" = "true" ]; then
-            echo "::error::WINDOWS_CODE_SIGNING_CERTIFICATE or WINDOWS_CERTIFICATE is required to Authenticode-sign Windows installers."
-            exit 1
           else
-            echo "::warning::Windows Authenticode certificate secrets are not configured. Building alpha Windows artifacts without Authenticode signatures; Tauri updater signatures are still required."
+            echo "::warning::Windows Authenticode certificate secrets are not configured. Building Windows artifacts without Authenticode signatures; Tauri updater signatures are still required."
             echo "authenticode_available=false" >> "$GITHUB_OUTPUT"
           fi
 
