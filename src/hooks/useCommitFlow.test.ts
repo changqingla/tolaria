@@ -28,6 +28,17 @@ function createDeferred<T>() {
   return { promise, reject: rejectDeferred, resolve: resolveDeferred }
 }
 
+const gitAuthorIdentityCallCount = () => (
+  mockInvokeFn.mock.calls.filter(([command]) => command === 'git_author_identity').length
+)
+
+const testAuthorIdentity = {
+  name: 'Test User',
+  email: 'test@example.com',
+  source: 'global',
+  warning: null,
+}
+
 describe('useCommitFlow', () => {
   let savePending: vi.Mock
   let loadModifiedFiles: vi.Mock
@@ -47,6 +58,7 @@ describe('useCommitFlow', () => {
     mockInvokeFn.mockReset()
     mockInvokeFn.mockImplementation((command: string) => {
       if (command === 'git_commit') return Promise.resolve('[main abc1234] test commit')
+      if (command === 'git_author_identity') return Promise.resolve(testAuthorIdentity)
       if (command === 'git_push') return Promise.resolve({ status: 'ok', message: 'Pushed to remote' })
       throw new Error(`Unexpected command: ${command}`)
     })
@@ -103,6 +115,104 @@ describe('useCommitFlow', () => {
     expect(loadModifiedFiles).toHaveBeenCalledTimes(1)
     expect(result.current.showCommitDialog).toBe(true)
     expect(result.current.isOpeningCommitDialog).toBe(false)
+  })
+
+  it('opens the commit dialog before delayed author identity resolves', async () => {
+    const pendingIdentity = createDeferred<typeof testAuthorIdentity>()
+    mockInvokeFn.mockImplementation((command: string) => {
+      if (command === 'git_author_identity') return pendingIdentity.promise
+      throw new Error(`Unexpected command: ${command}`)
+    })
+    const { result } = renderCommitFlow()
+    let openPromise = Promise.resolve()
+
+    act(() => {
+      openPromise = result.current.openCommitDialog()
+    })
+
+    await waitFor(() => expect(result.current.showCommitDialog).toBe(true))
+    expect(result.current.isOpeningCommitDialog).toBe(false)
+    expect(result.current.authorIdentity).toBeNull()
+    expect(gitAuthorIdentityCallCount()).toBe(1)
+
+    await act(async () => {
+      pendingIdentity.resolve(testAuthorIdentity)
+      await openPromise
+    })
+
+    await waitFor(() => expect(result.current.authorIdentity).toEqual(testAuthorIdentity))
+  })
+
+  it('reuses the loaded author identity when reopening the same vault dialog', async () => {
+    const { result } = renderCommitFlow()
+
+    await act(async () => {
+      await result.current.openCommitDialog()
+    })
+    await waitFor(() => expect(result.current.authorIdentity).toEqual(testAuthorIdentity))
+
+    act(() => {
+      result.current.closeCommitDialog()
+    })
+    await act(async () => {
+      await result.current.openCommitDialog()
+    })
+
+    expect(result.current.showCommitDialog).toBe(true)
+    expect(result.current.authorIdentity).toEqual(testAuthorIdentity)
+    expect(gitAuthorIdentityCallCount()).toBe(1)
+  })
+
+  it('ignores stale author identity responses after the dialog switches vaults', async () => {
+    const vaultAIdentity = {
+      ...testAuthorIdentity,
+      email: 'a@example.com',
+      name: 'Vault A',
+    }
+    const vaultBIdentity = {
+      ...testAuthorIdentity,
+      email: 'b@example.com',
+      name: 'Vault B',
+    }
+    const pendingVaultAIdentity = createDeferred<typeof testAuthorIdentity>()
+    mockInvokeFn.mockImplementation((command: string, args?: Record<string, unknown>) => {
+      if (command !== 'git_author_identity') throw new Error(`Unexpected command: ${command}`)
+      return args?.vaultPath === '/vault-a'
+        ? pendingVaultAIdentity.promise
+        : Promise.resolve(vaultBIdentity)
+    })
+    const props = {
+      manualVaultPath: '/vault-a',
+    }
+    const { result, rerender } = renderHook(
+      ({ manualVaultPath }) => useCommitFlow({
+        savePending,
+        loadModifiedFiles,
+        loadModifiedFilesForVaultPath,
+        resolveRemoteStatusForVaultPath,
+        setToastMessage,
+        onPushRejected,
+        manualVaultPath,
+        vaultPath: '/vault',
+      }),
+      { initialProps: props },
+    )
+
+    await act(async () => {
+      await result.current.openCommitDialog()
+    })
+    expect(result.current.showCommitDialog).toBe(true)
+    expect(result.current.authorIdentity).toBeNull()
+
+    rerender({ manualVaultPath: '/vault-b' })
+    await waitFor(() => expect(result.current.authorIdentity).toEqual(vaultBIdentity))
+
+    await act(async () => {
+      pendingVaultAIdentity.resolve(vaultAIdentity)
+      await pendingVaultAIdentity.promise
+    })
+
+    expect(result.current.authorIdentity).toEqual(vaultBIdentity)
   })
 
   it('clears opening state and reports recovery when dialog preparation fails', async () => {

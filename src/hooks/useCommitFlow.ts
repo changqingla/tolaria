@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import type { GitPushResult, GitRemoteStatus, ModifiedFile } from '../types'
+import type { GitAuthorIdentity, GitPushResult, GitRemoteStatus, ModifiedFile } from '../types'
 import { trackEvent } from '../lib/telemetry'
 import { isTauri, mockInvoke } from '../mock-tauri'
 import { generateAutomaticCommitMessage } from '../utils/automaticCommitMessage'
@@ -59,6 +59,13 @@ interface ExecutedCheckpoint {
   result: CommitResult
 }
 
+interface AuthorIdentityLoaderConfig {
+  authorIdentityCacheRef: MutableRefObject<Map<string, GitAuthorIdentity>>
+  authorIdentityInFlightRef: MutableRefObject<Map<string, Promise<GitAuthorIdentity>>>
+  authorIdentityVaultPathRef: MutableRefObject<string | null>
+  setAuthorIdentity: (identity: GitAuthorIdentity | null) => void
+}
+
 interface RepositoryCheckpointResult {
   action?: CheckpointAction
   error?: unknown
@@ -101,6 +108,35 @@ async function commitLocally({ vaultPath, message }: CommitArgs): Promise<void> 
   }
 
   await invoke<string>('git_commit', { vaultPath, message })
+}
+
+async function loadGitAuthorIdentity({ vaultPath }: VaultPathArgs): Promise<GitAuthorIdentity> {
+  if (!isTauri()) {
+    return mockInvoke<GitAuthorIdentity>('git_author_identity', { vaultPath })
+  }
+
+  return invoke<GitAuthorIdentity>('git_author_identity', { vaultPath })
+}
+
+function cachedGitAuthorIdentity({
+  authorIdentityCacheRef,
+  authorIdentityInFlightRef,
+  vaultPath,
+}: Pick<AuthorIdentityLoaderConfig, 'authorIdentityCacheRef' | 'authorIdentityInFlightRef'> & VaultPathArgs) {
+  const cachedIdentity = authorIdentityCacheRef.current.get(vaultPath)
+  if (cachedIdentity) return Promise.resolve(cachedIdentity)
+
+  const inFlightIdentity = authorIdentityInFlightRef.current.get(vaultPath)
+  if (inFlightIdentity) return inFlightIdentity
+
+  const request = loadGitAuthorIdentity({ vaultPath }).then((identity) => {
+    authorIdentityCacheRef.current.set(vaultPath, identity)
+    return identity
+  }).finally(() => {
+    authorIdentityInFlightRef.current.delete(vaultPath)
+  })
+  authorIdentityInFlightRef.current.set(vaultPath, request)
+  return request
 }
 
 async function pushCommittedChanges({ vaultPath }: VaultPathArgs): Promise<GitPushResult> {
@@ -503,6 +539,7 @@ function useManualCommitPushAction({
 
 function useCommitModeRefresh({
   commitModeVaultPathRef,
+  loadAuthorIdentityForVaultPath,
   manualVaultPath,
   resolveRemoteStatusForVaultPath,
   setCommitMode,
@@ -513,6 +550,7 @@ function useCommitModeRefresh({
   'manualVaultPath' | 'resolveRemoteStatusForVaultPath' | 'vaultPath'
 > & {
   commitModeVaultPathRef: MutableRefObject<string | null>
+  loadAuthorIdentityForVaultPath: (vaultPath: string) => void
   setCommitMode: (mode: CommitMode) => void
   showCommitDialog: boolean
 }) {
@@ -521,6 +559,7 @@ function useCommitModeRefresh({
 
     let cancelled = false
     const targetVaultPath = manualVaultPath || vaultPath
+    loadAuthorIdentityForVaultPath(targetVaultPath)
     if (commitModeVaultPathRef.current === targetVaultPath) return
 
     void resolveRemoteStatusForVaultPath(targetVaultPath).then((remoteStatus) => {
@@ -534,6 +573,7 @@ function useCommitModeRefresh({
     }
   }, [
     commitModeVaultPathRef,
+    loadAuthorIdentityForVaultPath,
     manualVaultPath,
     resolveRemoteStatusForVaultPath,
     setCommitMode,
@@ -545,6 +585,7 @@ function useCommitModeRefresh({
 function useOpenCommitDialog({
   dialogOpeningRef,
   commitModeVaultPathRef,
+  loadAuthorIdentityForVaultPath,
   loadModifiedFiles,
   manualVaultPath,
   resolveRemoteStatusForVaultPath,
@@ -565,6 +606,7 @@ function useOpenCommitDialog({
 > & {
   dialogOpeningRef: MutableRefObject<boolean>
   commitModeVaultPathRef: MutableRefObject<string | null>
+  loadAuthorIdentityForVaultPath: (vaultPath: string) => void
   setCommitMode: (mode: CommitMode) => void
   setDialogOpening: (opening: boolean) => void
   setShowCommitDialog: (open: boolean) => void
@@ -582,6 +624,7 @@ function useOpenCommitDialog({
       commitModeVaultPathRef.current = targetVaultPath
       setCommitMode(commitModeFromRemoteStatus(remoteStatus))
       setShowCommitDialog(true)
+      loadAuthorIdentityForVaultPath(targetVaultPath)
     } catch (err) {
       console.error('Commit dialog failed:', err)
       setToastMessage(`Commit dialog failed: ${errorMessage(err)}`)
@@ -592,6 +635,7 @@ function useOpenCommitDialog({
   }, [
     commitModeVaultPathRef,
     dialogOpeningRef,
+    loadAuthorIdentityForVaultPath,
     loadModifiedFiles,
     manualVaultPath,
     resolveRemoteStatusForVaultPath,
@@ -619,15 +663,38 @@ export function useCommitFlow({
 }: CommitFlowConfig) {
   const [showCommitDialog, setShowCommitDialog] = useState(false)
   const [commitMode, setCommitMode] = useState<CommitMode>('push')
+  const [authorIdentity, setAuthorIdentity] = useState<GitAuthorIdentity | null>(null)
   const [isOpeningCommitDialog, setOpeningCommitDialog] = useState(false)
   const checkpointInFlightRef = useRef(false)
   const dialogOpeningRef = useRef(false)
   const commitModeVaultPathRef = useRef<string | null>(null)
+  const authorIdentityCacheRef = useRef(new Map<string, GitAuthorIdentity>())
+  const authorIdentityInFlightRef = useRef(new Map<string, Promise<GitAuthorIdentity>>())
+  const authorIdentityVaultPathRef = useRef<string | null>(null)
   const t = useMemo(() => createTranslator(locale), [locale])
+  const loadAuthorIdentityForVaultPath = useCallback((targetVaultPath: string) => {
+    authorIdentityVaultPathRef.current = targetVaultPath
+
+    const cachedIdentity = authorIdentityCacheRef.current.get(targetVaultPath)
+    setAuthorIdentity(cachedIdentity ?? null)
+    if (cachedIdentity) return
+
+    void cachedGitAuthorIdentity({
+      authorIdentityCacheRef,
+      authorIdentityInFlightRef,
+      vaultPath: targetVaultPath,
+    }).then((identity) => {
+      if (authorIdentityVaultPathRef.current === targetVaultPath) setAuthorIdentity(identity)
+    }).catch((err) => {
+      console.error('Git author identity failed:', err)
+      if (authorIdentityVaultPathRef.current === targetVaultPath) setAuthorIdentity(null)
+    })
+  }, [])
 
   const openCommitDialog = useOpenCommitDialog({
     dialogOpeningRef,
     commitModeVaultPathRef,
+    loadAuthorIdentityForVaultPath,
     loadModifiedFiles,
     manualVaultPath,
     resolveRemoteStatusForVaultPath,
@@ -666,6 +733,7 @@ export function useCommitFlow({
   })
   useCommitModeRefresh({
     commitModeVaultPathRef,
+    loadAuthorIdentityForVaultPath,
     manualVaultPath,
     resolveRemoteStatusForVaultPath,
     setCommitMode,
@@ -678,6 +746,7 @@ export function useCommitFlow({
   return {
     showCommitDialog,
     commitMode,
+    authorIdentity,
     isOpeningCommitDialog,
     openCommitDialog,
     handleCommitPush,
